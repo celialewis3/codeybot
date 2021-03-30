@@ -14,6 +14,7 @@ use serenity::framework::standard::{
 };
 
 use dotenv::dotenv;
+use tokio::net::TcpListener;
 use std::env;
 
 #[group]
@@ -136,6 +137,11 @@ impl EventHandler for Handler {
 #[tokio::main]
 async fn main() {
     dotenv().ok();
+
+    let port = env::var("PORT").unwrap_or_else(|_| "1234".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    let mut listener = TcpListener::bind(addr).await.unwrap();
+
 
     let token = env::var("DISCORD_TOKEN")
     .expect("Expected a token in the environment");
