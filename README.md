@@ -1,5 +1,6 @@
 # 🧸 codeybot
 A discord bot written in Rust using serenity.
+
 The bot is being actively developed on https://twitch.tv/celiacode
 
 Test the bot out by joining the Discord server!
