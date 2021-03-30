@@ -1,5 +1,5 @@
 # codeybot
-🧸 A discord bot written in Rust
+🧸 A discord bot written in Rust using serenity
 
 Test the bot out by joining the Discord server!
 https://discord.gg/tuetDM3D8m
