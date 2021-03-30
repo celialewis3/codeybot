@@ -119,6 +119,14 @@ impl EventHandler for Handler {
                     println!("Error sending file: {}", why);
                 }
             },
+
+            "!test" => {
+                if let Err(why) = msg.channel_id.say(&ctx.http, 
+                    "codeybot is working!").await {
+                        println!("Error {}", why);
+                    }
+            },
+            
         
             "!twitch" => {
                 if let Err(why) = msg.channel_id.say(&ctx.http, 
@@ -138,6 +146,8 @@ impl EventHandler for Handler {
 async fn main() {
     dotenv().ok();
 
+
+    // This binds to the env variable given by Heroku
     let port = env::var("PORT").unwrap_or_else(|_| "1234".to_string());
     let addr = format!("0.0.0.0:{}", port);
     let mut listener = TcpListener::bind(addr).await.unwrap();
