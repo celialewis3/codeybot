@@ -1,26 +1,21 @@
-use serenity::{model::prelude::Reaction, prelude::TypeMapKey};
 use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
+use serenity::framework::standard::{
+    macros::{command, group},
+    CommandResult, StandardFramework,
+};
+use serenity::model::channel::Message;
 use serenity::model::id::*;
 use serenity::model::prelude::Member;
-use serenity::model::channel::Message;
-use serenity::framework::standard::{
-    StandardFramework,
-    CommandResult,
-    macros::{
-        command,
-        group
-    }
-};
+use serenity::{model::prelude::Reaction, prelude::TypeMapKey};
 
 use rand::rngs::StdRng;
 
-
 use dotenv::dotenv;
-use tokio::net::TcpListener;
 use std::env;
+use tokio::net::TcpListener;
 
-use tokio_postgres::{NoTls, Error};
+use tokio_postgres::{Error, NoTls};
 
 mod db;
 
@@ -32,11 +27,8 @@ struct Handler;
 
 #[async_trait]
 impl EventHandler for Handler {
-
-
     /* TODO: This currently doesn't work as intended. */
-    async fn guild_member_addition(&self, ctx: Context, gid: GuildId, person: Member)
-    {
+    async fn guild_member_addition(&self, ctx: Context, gid: GuildId, person: Member) {
         let mut greeting: String = "welcome to codeyclub, ".to_owned();
         let name: &str = person.user.name.as_str();
 
@@ -47,9 +39,7 @@ impl EventHandler for Handler {
         }
     }
 
-
     async fn reaction_remove(&self, ctx: Context, reaction: Reaction) {
-
         // If the reaction is toggled in the #getting-started channel, remove roll
         if reaction.channel_id == ChannelId(826244579497213998) {
             let emoji = reaction.emoji.as_data();
@@ -58,26 +48,26 @@ impl EventHandler for Handler {
             let member_result = gid.member(&ctx, user_id).await;
             let mut member = match member_result {
                 Ok(v) => v,
-                Err(e) => {println!("{}", e); return},
+                Err(e) => {
+                    println!("{}", e);
+                    return;
+                }
             };
-    
+
             let role_to_remove = match emoji.as_str() {
                 "🍓" => RoleId(826230179097608202),
                 "\u{1FAD0}" => RoleId(826230344243347466),
                 "\u{1F347}" => RoleId(826245452805963820),
                 _ => return,
-             };
-    
-             if let Err(why) = member.remove_role(&ctx, role_to_remove).await {
+            };
+
+            if let Err(why) = member.remove_role(&ctx, role_to_remove).await {
                 println!("Error assigning role: {}", why);
-             }            
+            }
         }
-
-
     }
 
     async fn reaction_add(&self, ctx: Context, reaction: Reaction) {
-
         /* Codey will add a role to a member given the react used */
 
         let emoji = reaction.emoji.as_data();
@@ -87,7 +77,10 @@ impl EventHandler for Handler {
         let member_result = gid.member(&ctx, user_id).await;
         let mut member = match member_result {
             Ok(v) => v,
-            Err(e) => {println!("{}", e); return},
+            Err(e) => {
+                println!("{}", e);
+                return;
+            }
         };
 
         let role_to_add = match emoji.as_str() {
@@ -95,21 +88,18 @@ impl EventHandler for Handler {
             "\u{1FAD0}" => RoleId(826230344243347466),
             "\u{1F347}" => RoleId(826245452805963820),
             _ => return,
-         };
+        };
 
-         if let Err(why) = member.add_role(&ctx, role_to_add).await {
+        if let Err(why) = member.add_role(&ctx, role_to_add).await {
             println!("Error assigning role: {}", why);
-         }
-
-     }
+        }
+    }
 
     /* Bot responds to messages */
 
     async fn message(&self, ctx: Context, msg: Message) {
-
-
         /* Universally, we want to increment points for talking */
-        
+
         let db_client = ctx.data.read().await;
         let new_client = db_client.get::<DbClient>().unwrap();
 
@@ -120,33 +110,24 @@ impl EventHandler for Handler {
                         from members
                         where userid = $1";
 
-        let q_rows = new_client
-        .execute(query, &[&id])
-        .await;
+        let q_rows = new_client.execute(query, &[&id]).await;
 
         let result = (&q_rows.unwrap()).to_owned();
 
         if result == 0 {
-
             let add_member = "INSERT INTO members (userid, points, name)
             VALUES ($1, 0, $2);";
 
             new_client.execute(add_member, &[&id, &member_name]).await;
-
         }
 
         let statement = "update members 
                         set points = points + 1 
                         where userid = $1";
 
-
-        let rows = new_client
-        .execute(statement, &[&id])
-        .await;
+        let rows = new_client.execute(statement, &[&id]).await;
 
         match msg.content.as_str() {
-
-
             // Once a day, you can get a gift on the server.
             // The gift is randomized.
             // Given to the person who called the command.
@@ -155,76 +136,75 @@ impl EventHandler for Handler {
                 let member_id = msg.author.id;
 
                 let mut congrats_message: String = "congrats! you caught a pokemon, ".to_owned();
-        
+
                 congrats_message.push_str(member_name.as_str());
 
                 let path = vec!["images/gengar.jpg"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content(congrats_message) ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(congrats_message))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-
-
-            },
+            }
 
             "!skitty" => {
                 let path = vec!["images/skitty.gif"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(""))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
-
+            }
 
             "!points" => {
                 let db_client = ctx.data.read().await;
                 let new_client = db_client.get::<DbClient>().unwrap();
-            
+
                 let statement = "select points from members  
                                 where userid = $1";
-            
+
                 let id = msg.author.id.as_u64().to_string();
-            
-                let rows = new_client
-                .query(statement, &[&id])
-                .await;
-            
+
+                let rows = new_client.query(statement, &[&id]).await;
+
                 let member_row = rows.unwrap();
-                
+
                 let member_row2 = member_row.get(0).unwrap();
-            
+
                 let points: i32 = member_row2.get(0);
-            
+
                 print!("{}", points);
-            
+
                 let mut message = "you have ".to_owned();
                 // message.push_str(points.to_string());
-            
+
                 message.push_str(points.to_string().as_str());
                 message.push_str(" codey points!");
-            
+
                 msg.reply(&ctx, message).await;
             }
 
-            
             "!vip" => {
                 // Check how many points you have
 
-
                 let db_client = ctx.data.read().await;
                 let new_client = db_client.get::<DbClient>().unwrap();
-            
+
                 let statement = "select points from members  
                                 where userid = $1";
-            
+
                 let id = msg.author.id.as_u64().to_string();
-            
-                let rows = new_client
-                .query(statement, &[&id])
-                .await;
-            
+
+                let rows = new_client.query(statement, &[&id]).await;
+
                 let member_row = rows.unwrap();
-                
+
                 let member_row2 = member_row.get(0).unwrap();
-            
+
                 let points: i32 = member_row2.get(0);
 
                 if points >= 50 {
@@ -237,26 +217,23 @@ impl EventHandler for Handler {
                     let member_result = gid.member(&ctx, user_id).await;
                     let mut member = match member_result {
                         Ok(v) => v,
-                        Err(e) => {println!("{}", e); return},
+                        Err(e) => {
+                            println!("{}", e);
+                            return;
+                        }
                     };
 
                     member.add_role(&ctx, vip_role).await;
-
-
-                }
-                else {
+                } else {
                     let remainder = 50 - points;
 
                     let message = format!("You need {} more points to become a VIP!", remainder);
                     msg.reply(&ctx, message).await;
                 }
 
-
                 // If you have 50 points, assign you the VIP role and give you SPECIAL PRIVILEGES SUCH AS
                 // access to grape juice, a Very Cool Lounge, and More!!!!!
-
-                
-            },
+            }
 
             "!8ball" => {
                 // let mut rng = rng
@@ -271,85 +248,119 @@ impl EventHandler for Handler {
                 // };
 
                 //msg.reply(&ctx, response).await;
-
-            },
-
+            }
 
             "!rocket" => {
                 let path = vec!["images/teamrocket.png"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("prepare for trouble?? make it double!!") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| {
+                        m.content("prepare for trouble?? make it double!!")
+                    })
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
+            }
 
             "!surprise" => {
                 let path = vec!["images/surprised.png"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(""))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
-        
+            }
+
             "!jam" => {
                 let path = vec!["images/pingujam.gif"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(""))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
-        
+            }
+
             "!realizing" => {
                 let path = vec!["images/realization.jpg"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(""))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
-        
+            }
+
             "!hearts" => {
                 let path = vec!["images/hearts.jpg"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(""))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
-        
+            }
+
             "!cornjail" => {
                 let path = vec!["images/cornjail.png"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(""))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
-        
+            }
+
             "!heh" => {
                 let path = vec!["images/heh.png"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(""))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
-        
+            }
+
             "!panic" => {
                 let path = vec!["images/panic.jpg"];
-                if let Err(why) = msg.channel_id.send_files(&ctx.http, path, |m| m.content("") ).await {
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content(""))
+                    .await
+                {
                     println!("Error sending file: {}", why);
                 }
-            },
+            }
 
             "!test" => {
-                if let Err(why) = msg.channel_id.say(&ctx.http, 
-                    "codeybot is working!").await {
-                        println!("Error {}", why);
-                    }
-            },
-            
-        
-            "!twitch" => {
-                if let Err(why) = msg.channel_id.say(&ctx.http, 
-                    "You can find my twitch channel at https://www.twitch.tv/celiacode").await {
-                        println!("Error {}", why);
-                    }
-            },
-        
-            _ => {},
-        
-        }
+                if let Err(why) = msg.channel_id.say(&ctx.http, "codeybot is working!").await {
+                    println!("Error {}", why);
+                }
+            }
 
+            "!twitch" => {
+                if let Err(why) = msg
+                    .channel_id
+                    .say(
+                        &ctx.http,
+                        "You can find my twitch channel at https://www.twitch.tv/celiacode",
+                    )
+                    .await
+                {
+                    println!("Error {}", why);
+                }
+            }
+
+            _ => {}
+        }
     }
 }
 
@@ -360,11 +371,11 @@ impl TypeMapKey for DbClient {
 }
 
 #[tokio::main]
-async fn main()  -> Result<(), Error> {
+async fn main() -> Result<(), Error> {
     dotenv().ok();
 
     let (db_client, connection) =
-    tokio_postgres::connect(env::var("DB_STRING").unwrap().as_str(), NoTls).await?;
+        tokio_postgres::connect(env::var("DB_STRING").unwrap().as_str(), NoTls).await?;
 
     // The connection object performs the actual communication with the database,
     // so spawn it off to run on its own.
@@ -388,10 +399,8 @@ async fn main()  -> Result<(), Error> {
     // This binds to the env variable given by Heroku
     bind().await;
 
+    let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
-    let token = env::var("DISCORD_TOKEN")
-    .expect("Expected a token in the environment");
-    
     let framework = StandardFramework::new()
         .configure(|c| c.prefix("!")) // set the bot's prefix to "~"
         .group(&GENERAL_GROUP);
@@ -418,7 +427,6 @@ async fn bind() {
     let mut listener = TcpListener::bind(addr).await.unwrap();
 }
 
-
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(ctx, "Pong!").await?;
@@ -428,9 +436,7 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 
     let statement = "select * from members";
 
-    let rows = new_client
-    .query(statement, &[])
-    .await?;
+    let rows = new_client.query(statement, &[]).await?;
 
     println!("{:?}", rows);
 

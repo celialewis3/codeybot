@@ -1,4 +1,4 @@
-use tokio_postgres::{NoTls, Error};
+use tokio_postgres::{Error, NoTls};
 
 #[tokio::main] // By default, tokio_postgres uses the tokio crate as its runtime.
 pub async fn db() -> Result<(), Error> {
@@ -15,9 +15,7 @@ pub async fn db() -> Result<(), Error> {
     });
 
     // Now we can execute a simple statement that just returns its parameter.
-    let rows = client
-        .query("SELECT $1::TEXT", &[&"hello world"])
-        .await?;
+    let rows = client.query("SELECT $1::TEXT", &[&"hello world"]).await?;
 
     println!("{:?}", rows);
 
