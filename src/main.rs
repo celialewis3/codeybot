@@ -152,7 +152,6 @@ impl EventHandler for Handler {
             }
 
             "!hunger" => {
-
                 let statement = "select hunger from codey  
                 where name = 'Codey'";
 
@@ -168,16 +167,12 @@ impl EventHandler for Handler {
 
                 let message = format!("Codey's hunger points are {} out of 100", hunger);
 
-                if let Err(why) = msg
-                    .channel_id
-                    .say(&ctx, message).await
-                {
+                if let Err(why) = msg.channel_id.say(&ctx, message).await {
                     println!("Error sending file: {}", why);
                 }
             }
 
             "!feed" => {
-
                 let decrease_hunger = "update codey 
                                 set hunger = 100;";
 
@@ -186,13 +181,14 @@ impl EventHandler for Handler {
 
                 if let Err(why) = msg
                     .channel_id
-                    .send_files(&ctx.http, path, |m| m.content("Codey happily eats the grapes you offer him!"))
+                    .send_files(&ctx.http, path, |m| {
+                        m.content("Codey happily eats the grapes you offer him!")
+                    })
                     .await
                 {
                     println!("Error sending file: {}", why);
                 }
             }
-
 
             "!skitty" => {
                 let path = vec!["images/skitty.gif"];
@@ -295,21 +291,16 @@ impl EventHandler for Handler {
                 //msg.reply(&ctx, response).await;
             }
 
-
-            
             "!cry" => {
                 let path = vec!["images/crying.jpg"];
                 if let Err(why) = msg
                     .channel_id
-                    .send_files(&ctx.http, path, |m| {
-                        m.content("")
-                    })
+                    .send_files(&ctx.http, path, |m| m.content(""))
                     .await
                 {
                     println!("Error sending file: {}", why);
                 }
             }
-            
 
             "!rocket" => {
                 let path = vec!["images/teamrocket.png"];
@@ -457,7 +448,7 @@ async fn main() -> Result<(), Error> {
         .group(&GENERAL_GROUP);
 
     /* Login with a Discord bot token from the environment and also include the DB connection as part of the context;
-       this is done by inserting it into the type map. */ 
+    this is done by inserting it into the type map. */
     let mut client = Client::builder(&token)
         .event_handler(Handler)
         .framework(framework)
@@ -465,15 +456,13 @@ async fn main() -> Result<(), Error> {
         .await
         .expect("Error creating client");
 
-    /* start listening for events by starting a single shard */ 
+    /* start listening for events by starting a single shard */
     if let Err(why) = client.start().await {
         println!("An error occurred while running the client: {:?}", why);
     }
 
-
     Ok(())
 }
-
 
 async fn bind() {
     let mut listener = TcpListener::bind("0.0.0.0:1234").await.unwrap();
@@ -496,10 +485,6 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
-
-
-
-
 /* WIP stuff involving connecting to Twitch. Needs more research.
 
 async fn new_test() {
@@ -513,7 +498,7 @@ async fn new_test() {
         Err(TokenError::RequestError(e)) => panic!("got error: {:?}", e),
         Err(e) => panic!(e),
     };
-    
+
     let client = TwitchClient::new();
     let req = GetChannelInformationRequest::builder()
         .broadcaster_id("27620241")
@@ -535,7 +520,7 @@ async fn reqwest_test() -> Result<(), reqwest::Error> {
     let oAuth = format!("https://id.twitch.tv/oauth2/token
         ?client_id={}
         &client_secret={}
-        &grant_type=client_credentials", 
+        &grant_type=client_credentials",
         env::var("TWITCH_CLIENT_ID").unwrap(),
         env::var("TWITCH_SECRET").unwrap()
     );
