@@ -9,15 +9,11 @@ use serenity::model::id::*;
 use serenity::model::prelude::Member;
 use serenity::{model::prelude::Reaction, prelude::TypeMapKey};
 
-use rand::rngs::StdRng;
-
 use dotenv::dotenv;
 use std::env;
 use tokio::net::TcpListener;
 
 use tokio_postgres::{Error, NoTls};
-
-mod db;
 
 #[group]
 #[commands(ping)]
@@ -121,6 +117,12 @@ impl EventHandler for Handler {
             new_client.execute(add_member, &[&id, &member_name]).await;
         }
 
+        let decrement_hunger = "update codey 
+                                set hunger = hunger - 1 
+                                ";
+
+        let rows = new_client.execute(decrement_hunger, &[]).await;
+
         let statement = "update members 
                         set points = points + 1 
                         where userid = $1";
@@ -148,6 +150,49 @@ impl EventHandler for Handler {
                     println!("Error sending file: {}", why);
                 }
             }
+
+            "!hunger" => {
+
+                let statement = "select hunger from codey  
+                where name = 'Codey'";
+
+                let rows = new_client.query(statement, &[]).await;
+
+                let member_row = rows.unwrap();
+
+                let member_row2 = member_row.get(0).unwrap();
+
+                println!("{:?}", member_row2);
+
+                let hunger: i32 = member_row2.get(0);
+
+                let message = format!("Codey's hunger points are {} out of 100", hunger);
+
+                if let Err(why) = msg
+                    .channel_id
+                    .say(&ctx, message).await
+                {
+                    println!("Error sending file: {}", why);
+                }
+            }
+
+            "!feed" => {
+
+                let decrease_hunger = "update codey 
+                                set hunger = 100;";
+
+                let rows = new_client.execute(decrease_hunger, &[]).await;
+                let path = vec!["images/eating.gif"];
+
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| m.content("Codey happily eats the grapes you offer him!"))
+                    .await
+                {
+                    println!("Error sending file: {}", why);
+                }
+            }
+
 
             "!skitty" => {
                 let path = vec!["images/skitty.gif"];
@@ -249,6 +294,22 @@ impl EventHandler for Handler {
 
                 //msg.reply(&ctx, response).await;
             }
+
+
+            
+            "!cry" => {
+                let path = vec!["images/crying.jpg"];
+                if let Err(why) = msg
+                    .channel_id
+                    .send_files(&ctx.http, path, |m| {
+                        m.content("")
+                    })
+                    .await
+                {
+                    println!("Error sending file: {}", why);
+                }
+            }
+            
 
             "!rocket" => {
                 let path = vec!["images/teamrocket.png"];
@@ -377,35 +438,26 @@ async fn main() -> Result<(), Error> {
     let (db_client, connection) =
         tokio_postgres::connect(env::var("DB_STRING").unwrap().as_str(), NoTls).await?;
 
-    // The connection object performs the actual communication with the database,
-    // so spawn it off to run on its own.
+    /* The connection object performs the actual communication with the database,
+    so spawn it off to run on its own. */
+
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             eprintln!("connection error: {}", e);
         }
     });
 
-    // Now we can execute a simple statement that just returns its parameter.
-    let rows = db_client
-        .query("SELECT $1::TEXT", &[&"hello world"])
-        .await?;
-
-    println!("{:?}", rows);
-
-    // And then check that we got back the same string we sent over.
-    let value: &str = rows[0].get(0);
-    assert_eq!(value, "hello world");
-
-    // This binds to the env variable given by Heroku
+    // Binds the bot to a port. This is required by Discord for the bot to run.
     bind().await;
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
     let framework = StandardFramework::new()
-        .configure(|c| c.prefix("!")) // set the bot's prefix to "~"
+        .configure(|c| c.prefix("!")) // set the bot's prefix to "!"
         .group(&GENERAL_GROUP);
 
-    // Login with a bot token from the environment
+    /* Login with a Discord bot token from the environment and also include the DB connection as part of the context;
+       this is done by inserting it into the type map. */ 
     let mut client = Client::builder(&token)
         .event_handler(Handler)
         .framework(framework)
@@ -413,20 +465,21 @@ async fn main() -> Result<(), Error> {
         .await
         .expect("Error creating client");
 
-    // start listening for events by starting a single shard
+    /* start listening for events by starting a single shard */ 
     if let Err(why) = client.start().await {
         println!("An error occurred while running the client: {:?}", why);
     }
 
+
     Ok(())
 }
 
+
 async fn bind() {
-    let port = env::var("PORT").unwrap_or_else(|_| "1234".to_string());
-    let addr = format!("0.0.0.0:{}", port);
-    let mut listener = TcpListener::bind(addr).await.unwrap();
+    let mut listener = TcpListener::bind("0.0.0.0:1234").await.unwrap();
 }
 
+// This command is created using the #[command] macro.
 #[command]
 async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
     msg.reply(ctx, "Pong!").await?;
@@ -442,3 +495,66 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 
     Ok(())
 }
+
+
+
+
+
+/* WIP stuff involving connecting to Twitch. Needs more research.
+
+async fn new_test() {
+
+    let client_id = twitch_oauth2::ClientId::new(env::var("TWITCH_CLIENT_ID").unwrap());
+    let client_secret = twitch_oauth2::ClientSecret::new(env::var("TWITCH_SECRET").unwrap());
+
+    let token =
+    match AppAccessToken::get_app_access_token(client_id, client_secret, Scope::all()).await {
+        Ok(t) => t,
+        Err(TokenError::RequestError(e)) => panic!("got error: {:?}", e),
+        Err(e) => panic!(e),
+    };
+    
+    let client = TwitchClient::new();
+    let req = GetChannelInformationRequest::builder()
+        .broadcaster_id("27620241")
+        .build();
+
+    println!("{:?}", &client.helix.req_get(req, &token).await.unwrap().data[0].title);
+
+}
+
+
+
+
+async fn reqwest_test() -> Result<(), reqwest::Error> {
+
+    let client = reqwest::Client::new();
+
+    let secret = format!("Bearer {}", env::var("TWITCH_SECRET").unwrap());
+
+    let oAuth = format!("https://id.twitch.tv/oauth2/token
+        ?client_id={}
+        &client_secret={}
+        &grant_type=client_credentials", 
+        env::var("TWITCH_CLIENT_ID").unwrap(),
+        env::var("TWITCH_SECRET").unwrap()
+    );
+
+
+    let body = client
+        .post(oAuth)
+        .header("Client-Id", env::var("TWITCH_CLIENT_ID").unwrap())
+        .bearer_auth(env::var("TWITCH_SECRET").unwrap())
+        //.header("Authorization", secret)
+        .send()
+        .await?;
+
+
+    println!("body = {:?}", body);
+
+    Ok(())
+
+
+}
+
+*/
