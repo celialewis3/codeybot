@@ -1,4 +1,3 @@
-use serenity::async_trait;
 use serenity::client::{Client, Context, EventHandler};
 use serenity::framework::standard::{
     macros::{command, group},
@@ -7,16 +6,20 @@ use serenity::framework::standard::{
 use serenity::model::channel::Message;
 use serenity::model::id::*;
 use serenity::model::prelude::Member;
+use serenity::{async_trait, framework::standard::Args};
 use serenity::{model::prelude::Reaction, prelude::TypeMapKey};
 
 use dotenv::dotenv;
 use std::env;
 use tokio::net::TcpListener;
 
+use reqwest;
 use tokio_postgres::{Error, NoTls};
 
+mod ghibli;
+
 #[group]
-#[commands(ping)]
+#[commands(ghibli)]
 struct General;
 
 struct Handler;
@@ -24,7 +27,7 @@ struct Handler;
 #[async_trait]
 impl EventHandler for Handler {
     /* TODO: This currently doesn't work as intended. */
-    async fn guild_member_addition(&self, ctx: Context, gid: GuildId, person: Member) {
+    async fn guild_member_addition(&self, ctx: Context, _gid: GuildId, person: Member) {
         let mut greeting: String = "welcome to codeyclub, ".to_owned();
         let name: &str = person.user.name.as_str();
 
@@ -99,44 +102,17 @@ impl EventHandler for Handler {
         let db_client = ctx.data.read().await;
         let new_client = db_client.get::<DbClient>().unwrap();
 
-        let id = msg.author.id.as_u64().to_string();
+        let user_id = msg.author.id.as_u64().to_string();
         let member_name = msg.author.name.clone();
 
-        let query = "select 1
-                        from members
-                        where userid = $1";
-
-        let q_rows = new_client.execute(query, &[&id]).await;
-
-        let result = (&q_rows.unwrap()).to_owned();
-
-        if result == 0 {
-            let add_member = "INSERT INTO members (userid, points, name)
-            VALUES ($1, 0, $2);";
-
-            new_client.execute(add_member, &[&id, &member_name]).await;
-        }
-
-        let decrement_hunger = "update codey 
-                                set hunger = hunger - 1 
-                                ";
-
-        let rows = new_client.execute(decrement_hunger, &[]).await;
-
-        let statement = "update members 
-                        set points = points + 1 
-                        where userid = $1";
-
-        let rows = new_client.execute(statement, &[&id]).await;
+        increment_points(&new_client, user_id.clone(), member_name.clone()).await;
+        make_hungrier(&new_client).await;
 
         match msg.content.as_str() {
             // Once a day, you can get a gift on the server.
             // The gift is randomized.
             // Given to the person who called the command.
             "!catch" => {
-                let gid = msg.guild_id.unwrap();
-                let member_id = msg.author.id;
-
                 let mut congrats_message: String = "congrats! you caught a pokemon, ".to_owned();
 
                 congrats_message.push_str(member_name.as_str());
@@ -176,7 +152,9 @@ impl EventHandler for Handler {
                 let decrease_hunger = "update codey 
                                 set hunger = 100;";
 
-                let rows = new_client.execute(decrease_hunger, &[]).await;
+                if let Err(e) = new_client.execute(decrease_hunger, &[]).await {
+                    println!("Error occured while feeding: {}", e);
+                }
                 let path = vec!["images/eating.gif"];
 
                 if let Err(why) = msg
@@ -226,7 +204,12 @@ impl EventHandler for Handler {
                 message.push_str(points.to_string().as_str());
                 message.push_str(" codey points!");
 
-                msg.reply(&ctx, message).await;
+                match msg.reply(&ctx, message).await {
+                    Ok(_e) => {}
+                    Err(e) => {
+                        println!("Error occured on message send in !points: {}", e);
+                    }
+                }
             }
 
             "!vip" => {
@@ -249,7 +232,12 @@ impl EventHandler for Handler {
                 let points: i32 = member_row2.get(0);
 
                 if points >= 50 {
-                    msg.reply(&ctx, "You are now a VIP!").await;
+                    match msg.reply(&ctx, "You are now a VIP!").await {
+                        Ok(_e) => {}
+                        Err(e) => {
+                            println!("Error occured on message send in !vip: {}", e);
+                        }
+                    }
 
                     let vip_role = RoleId(827983030957113390);
 
@@ -264,12 +252,22 @@ impl EventHandler for Handler {
                         }
                     };
 
-                    member.add_role(&ctx, vip_role).await;
+                    match member.add_role(&ctx, vip_role).await {
+                        Ok(_e) => {}
+                        Err(e) => {
+                            println!("Error occured on add role in !vip: {}", e);
+                        }
+                    }
                 } else {
                     let remainder = 50 - points;
 
                     let message = format!("You need {} more points to become a VIP!", remainder);
-                    msg.reply(&ctx, message).await;
+                    match msg.reply(&ctx, message).await {
+                        Ok(_e) => {}
+                        Err(e) => {
+                            println!("Error occured on message reply in !vip: {}", e);
+                        }
+                    }
                 }
 
                 // If you have 50 points, assign you the VIP role and give you SPECIAL PRIVILEGES SUCH AS
@@ -416,6 +414,46 @@ impl EventHandler for Handler {
     }
 }
 
+async fn increment_points(new_client: &tokio_postgres::Client, id: String, member_name: String) {
+    /* First, check if the member exists in the DB */
+    let query = "select 1
+                    from members
+                    where userid = $1";
+
+    let q_rows = new_client.execute(query, &[&id]).await;
+
+    let result = (&q_rows.unwrap()).to_owned();
+
+    /* If result is 0, they are not in the DB. Add them in using INSERT INTO */
+    if result == 0 {
+        let add_member = "INSERT INTO members (userid, points, name)
+        VALUES ($1, 0, $2);";
+
+        if let Err(e) = new_client.execute(add_member, &[&id, &member_name]).await {
+            println!("Error occcured while adding new member: {}", e);
+        }
+    }
+
+    /* Now increment the points the member has */
+    let statement = "update members 
+    set points = points + 1 
+    where userid = $1";
+
+    if let Err(e) = new_client.execute(statement, &[&id]).await {
+        println!("Error occurred while increasing points: {}", e);
+    }
+}
+
+async fn make_hungrier(client: &tokio_postgres::Client) {
+    let decrement_hunger = "update codey 
+                                set hunger = hunger - 1 
+                                ";
+
+    if let Err(e) = client.execute(decrement_hunger, &[]).await {
+        println!("Error: {}", e);
+    }
+}
+
 struct DbClient;
 
 impl TypeMapKey for DbClient {
@@ -465,81 +503,21 @@ async fn main() -> Result<(), Error> {
 }
 
 async fn bind() {
-    let mut listener = TcpListener::bind("0.0.0.0:1234").await.unwrap();
+    let _listener = TcpListener::bind("0.0.0.0:1234").await.unwrap();
 }
 
 // This command is created using the #[command] macro.
 #[command]
-async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(ctx, "Pong!").await?;
+async fn ghibli(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let movie_name = args.rest();
 
-    let db_client = ctx.data.read().await;
-    let new_client = db_client.get::<DbClient>().unwrap();
+    let response = reqwest::get("https://ghibliapi.herokuapp.com/films").await?;
 
-    let statement = "select * from members";
+    let films = response.json::<Vec<ghibli::Film>>().await?;
 
-    let rows = new_client.query(statement, &[]).await?;
+    let movie_info = ghibli::movie_info(movie_name.to_string(), &films);
 
-    println!("{:?}", rows);
-
-    Ok(())
-}
-
-/* WIP stuff involving connecting to Twitch. Needs more research.
-
-async fn new_test() {
-
-    let client_id = twitch_oauth2::ClientId::new(env::var("TWITCH_CLIENT_ID").unwrap());
-    let client_secret = twitch_oauth2::ClientSecret::new(env::var("TWITCH_SECRET").unwrap());
-
-    let token =
-    match AppAccessToken::get_app_access_token(client_id, client_secret, Scope::all()).await {
-        Ok(t) => t,
-        Err(TokenError::RequestError(e)) => panic!("got error: {:?}", e),
-        Err(e) => panic!(e),
-    };
-
-    let client = TwitchClient::new();
-    let req = GetChannelInformationRequest::builder()
-        .broadcaster_id("27620241")
-        .build();
-
-    println!("{:?}", &client.helix.req_get(req, &token).await.unwrap().data[0].title);
-
-}
-
-
-
-
-async fn reqwest_test() -> Result<(), reqwest::Error> {
-
-    let client = reqwest::Client::new();
-
-    let secret = format!("Bearer {}", env::var("TWITCH_SECRET").unwrap());
-
-    let oAuth = format!("https://id.twitch.tv/oauth2/token
-        ?client_id={}
-        &client_secret={}
-        &grant_type=client_credentials",
-        env::var("TWITCH_CLIENT_ID").unwrap(),
-        env::var("TWITCH_SECRET").unwrap()
-    );
-
-
-    let body = client
-        .post(oAuth)
-        .header("Client-Id", env::var("TWITCH_CLIENT_ID").unwrap())
-        .bearer_auth(env::var("TWITCH_SECRET").unwrap())
-        //.header("Authorization", secret)
-        .send()
-        .await?;
-
-
-    println!("body = {:?}", body);
+    msg.reply(ctx, movie_info).await?;
 
     Ok(())
-
-
 }
-
-*/
